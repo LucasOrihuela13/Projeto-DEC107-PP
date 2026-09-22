@@ -24,6 +24,14 @@
   e avisa no stderr quando OMP_SCHEDULE nao esta definido.
  
   O numero de threads pode vir de -t OU de OMP_NUM_THREADS (-t tem prioridade).
+
+  O que este arquivo faz:
+    Combina a paralelizacao por linhas em OpenMP (igual a branch "main") com
+    as tres otimizacoes de mandelbrot_serial.c desta branch (early-exit
+    cardioide/bulbo, deteccao de ciclo, simetria do eixo real), alem de
+    paralelizar tambem a etapa de colorizacao da imagem final e diagnosticar
+    o schedule efetivamente usado. A saida (.bin) deve ser bit-identica as
+    demais versoes, para qualquer combinacao de threads/schedule/-s.
  */
 #define _POSIX_C_SOURCE 199309L
 
@@ -67,6 +75,8 @@ static void imprime_uso(const char *prog) {
         "  --help para esta ajuda (-h e altura, nao ajuda)\n", prog);
 }
 
+/* Mesmas flags da versao serial desta branch, com -t (threads) adicionada.
+   Lembrete: -h aqui e ALTURA, nao ajuda (ver comentario no topo do arquivo). */
 static int parse_argumentos(int argc, char **argv, config_t *cfg) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-?") == 0) {
@@ -112,6 +122,11 @@ static int parse_argumentos(int argc, char **argv, config_t *cfg) {
     return 0;
 }
 
+/* Traduz o enum interno omp_sched_t (usado por omp_get_schedule) para um
+   nome legivel. O runtime as vezes seta o bit mais significativo
+   (0x80000000) como uma flag de implementacao (schedule "monotonico" no
+   OpenMP 4.5+); mascaramos esse bit com "& ~0x80000000" para nao cair no
+   "default" por engano ao decodificar o valor numerico do "kind". */
 static const char *nome_schedule(omp_sched_t k) {
     switch ((int) k & ~0x80000000) {
         case 1: return "static";
@@ -122,6 +137,14 @@ static const char *nome_schedule(omp_sched_t k) {
     }
 }
 
+/* Descobre e reporta qual politica/chunk "schedule(runtime)" realmente
+   resolveu para esta execucao. Isso existe porque o padrao OpenMP NAO
+   garante qual e o schedule default quando OMP_SCHEDULE nao e definida --
+   cada implementacao pode escolher o que quiser. Sem essa checagem, seria
+   facil rodar experimentos "por engano" com um schedule nao intencional e
+   nao conseguir reproduzi-los depois. Escreve o schedule efetivo em
+   "destino" (para entrar na linha RESULTADO) e avisa no stderr quando a
+   variavel de ambiente nao foi definida explicitamente. */
 static void relata_schedule(char *destino, size_t n) {
     omp_sched_t kind;
     int chunk;
@@ -145,6 +168,8 @@ static double agora(void) {
     return (double) ts.tv_sec + (double) ts.tv_nsec / 1e9;
 }
 
+/* Identica a versao serial desta branch -- ver comentario la para a
+   dedução das formulas da cardioide principal e do bulbo de periodo 2. */
 static int dentro_cardioide_ou_bulbo(double cre, double cim) {
     double cre_menos_quarto = cre - 0.25;
     double cim2 = cim * cim;
@@ -159,6 +184,12 @@ static int dentro_cardioide_ou_bulbo(double cre, double cim) {
     return 0;
 }
 
+/* Identica a versao serial desta branch: early-exit geometrico +
+   deteccao de ciclo por Brent (ver comentario detalhado em
+   mandelbrot_serial.c desta mesma branch). Assim como na branch "main",
+   e uma funcao pura/sem estado compartilhado, entao e thread-safe por
+   construcao -- pode ser chamada por varias threads ao mesmo tempo sem
+   nenhuma sincronizacao. */
 static int escape_time(double cre, double cim, int max_iter) {
     if (dentro_cardioide_ou_bulbo(cre, cim)) {
         return max_iter;
@@ -193,12 +224,25 @@ static int escape_time(double cre, double cim, int max_iter) {
     return max_iter;
 }
 
+/* Identica a versao serial desta branch -- checa se a linha "py" tem
+   espelho exato em torno de Im=0 na grade discreta atual. */
 static int espelho_exato(double im_min, double passo_y, int height, int py) {
     double cim         = im_min + (double) py * passo_y;
     double cim_espelho = im_min + (double) (height - 1 - py) * passo_y;
     return cim_espelho == -cim;
 }
 
+/* Combina a distribuicao de linhas entre threads (igual a branch "main")
+   com a exploracao de simetria da versao serial desta branch. Cada thread,
+   dentro do seu proprio pedaco do "#pragma omp for", decide linha a linha
+   se pode copiar de um espelho ja calculado (a propria linha py e seu
+   espelho py_espelho SEMPRE caem no mesmo pedaco processado por uma unica
+   thread quando exato==true, porque o teste "py > py_espelho" so pula
+   quando a linha espelhada, menor, ja veio antes na mesma iteracao do loop
+   -- ou seja, o memcpy e feito dentro da mesma iteracao "py", nunca entre
+   duas threads diferentes, entao continua sem necessidade de secao
+   critica). O restante (medicao de tempo e linhas por thread) e igual a
+   branch "main". */
 static void gera_mandelbrot_omp(int *matriz, const config_t *cfg,
                                 double re_min, double re_max,
                                 double im_min, double im_max,
@@ -213,6 +257,10 @@ static void gera_mandelbrot_omp(int *matriz, const config_t *cfg,
     {
         int tid = omp_get_thread_num();
 
+        /* Equivalente a "#pragma omp master" da branch "main", mas escrito
+           como "if (tid == 0)" -- forma mais portavel entre versoes de
+           OpenMP mais antigas, que nem sempre suportam a diretiva "master"
+           da mesma forma. Efeito identico: so a thread 0 escreve aqui. */
         if (tid == 0) {
             *nthreads_usadas = omp_get_num_threads();
         }
@@ -249,6 +297,7 @@ static void gera_mandelbrot_omp(int *matriz, const config_t *cfg,
     }
 }
 
+/* Identica a versao serial desta branch. */
 static void cor_do_pixel(int it, int max_iter,
                           unsigned char *r, unsigned char *g, unsigned char *b) {
     if (it >= max_iter) {
@@ -293,6 +342,7 @@ static void cor_do_pixel(int it, int max_iter,
     *b = (unsigned char) blue;
 }
 
+/* Identica as demais versoes: grava a matriz canonica em binario cru. */
 static int escreve_binario(const int *matriz, const config_t *cfg) {
     char caminho[300];
     snprintf(caminho, sizeof(caminho), "%s.bin", cfg->prefixo);
@@ -311,6 +361,16 @@ static int escreve_binario(const int *matriz, const config_t *cfg) {
     return 0;
 }
 
+/* Mesma logica da versao serial desta branch para gerar o PPM colorido,
+   mas com a colorizacao PARALELIZADA: como cor_do_pixel() so le "matriz"
+   (nunca escreve nela) e cada iteracao "y" escreve em uma posicao distinta
+   e independente do buffer "linha", o loop pode ser dividido entre threads
+   sem nenhuma condicao de corrida. schedule(static) e suficiente aqui
+   porque o custo de colorir cada pixel e praticamente constante (poucas
+   operacoes de ponto flutuante + um log1p), ao contrario do calculo do
+   fractal em si, que e fortemente desbalanceado. Isso evita que a etapa de
+   E/S vire um gargalo serial desproporcional depois do calculo paralelo da
+   matriz. */
 static int escreve_ppm(const int *matriz, const config_t *cfg) {
     char caminho[300];
     snprintf(caminho, sizeof(caminho), "%s.ppm", cfg->prefixo);
@@ -380,6 +440,9 @@ int main(int argc, char **argv) {
     long *linhas_thread = calloc((size_t) max_threads, sizeof(long));
     int nthreads_usadas = 0;
 
+    /* Descobre o schedule efetivo ANTES do relatorio de config no stderr,
+       para poder exibi-lo junto (e para emitir o aviso de OMP_SCHEDULE
+       ausente o quanto antes, antes de qualquer calculo pesado). */
     char sched[64];
     relata_schedule(sched, sizeof(sched));
 
@@ -419,6 +482,13 @@ int main(int argc, char **argv) {
     double t3 = agora();
     double tempo_io = t3 - t2;
 
+    /* Fator de Balanceamento de Carga: identico em definicao a branch
+       "main" (tempo_max / tempo_medio entre threads). Com a simetria ativa,
+       cada thread processa metade das linhas "efetivas" (a outra metade e
+       so um memcpy), entao o balanceamento reportado aqui reflete o efeito
+       combinado do schedule ESCOLHIDO com a REDUCAO de trabalho da
+       simetria -- por isso o enunciado pede tambem a comparacao com -s 0
+       (linha de base sem bonus) para isolar o efeito de cada otimizacao. */
     double soma = 0.0, maior = 0.0, menor = -1.0;
     for (int i = 0; i < nthreads_usadas; i++) {
         soma += tempos_thread[i];
@@ -438,6 +508,12 @@ int main(int argc, char **argv) {
         printf("  thread %2d: %8.6f s, %ld linhas\n", i, tempos_thread[i], linhas_thread[i]);
     }
 
+    /* Linha RESULTADO desta versao: igual a branch "main" nas primeiras
+       colunas (dimensoes, threads, tempos, fator de balanceamento), com
+       duas colunas extras no final -- o schedule efetivo detectado
+       (string "politica:chunk") e o valor de "simetria" (0/1) usado --
+       essenciais para depois cruzar os resultados por politica de
+       escalonamento e por presenca/ausencia da otimizacao de simetria. */
     printf("RESULTADO,%d,%d,%d,%d,%.6f,%.6f,%.4f,%s,%d\n",
            cfg.width, cfg.height, cfg.max_iter, nthreads_usadas,
            tempo_calculo, tempo_io, fator_balanceamento,
