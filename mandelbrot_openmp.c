@@ -13,6 +13,13 @@
     OMP_SCHEDULE="guided,32"    ./mandelbrot_openmp ...
  
   O numero de threads pode vir de -t OU de OMP_NUM_THREADS (-t tem prioridade).
+
+  O que este arquivo faz:
+    Versao PARALELA (memoria compartilhada, OpenMP) do mesmo gerador de
+    Mandelbrot de mandelbrot_serial.c. O algoritmo por pixel e identico ao
+    da versao serial -- a paralelizacao acontece apenas na distribuicao das
+    LINHAS da imagem entre threads. A saida (.bin) deve ser bit-identica a
+    da versao serial, para qualquer politica de escalonamento.
  */
 
 #define _POSIX_C_SOURCE 199309L
@@ -30,7 +37,7 @@ typedef struct {
     double centro_re;
     double centro_im;
     double largura_re;
-    int    threads;
+    int    threads;      /* threads pedidas via -t; 0 = usar o default do OpenMP/OMP_NUM_THREADS */
     char   prefixo[256];
 } config_t;
 
@@ -52,6 +59,7 @@ static void imprime_uso(const char *prog) {
         "[-y centro_im] [-l largura_re] [-t threads] [-o prefixo_saida]\n", prog);
 }
 
+/* Identico ao parser da versao serial, com a flag extra -t (threads). */
 static int parse_argumentos(int argc, char **argv, config_t *cfg) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
@@ -100,6 +108,10 @@ static double agora(void) {
     return (double) ts.tv_sec + (double) ts.tv_nsec / 1e9;
 }
 
+/* Mesmo nucleo matematico da versao serial -- nao ha nada "paralelo" aqui.
+   Cada thread chama esta funcao de forma totalmente independente, sem
+   nenhum dado compartilhado mutavel, entao nao ha risco de condicao de
+   corrida dentro dela (todas as variaveis sao locais/automaticas). */
 static int escape_time(double cre, double cim, int max_iter) {
     double zre = 0.0, zim = 0.0;
 
@@ -117,6 +129,11 @@ static int escape_time(double cre, double cim, int max_iter) {
     return max_iter;
 }
 
+/* Versao paralela de gera_mandelbrot: cada thread executa este bloco
+   inteiro (regiao "#pragma omp parallel"), e o trabalho de linhas
+   (loop em py) e dividido entre elas pelo "#pragma omp for". Cada thread
+   tambem mede seu proprio tempo e conta suas proprias linhas, o que
+   permite calcular o Fator de Balanceamento de Carga depois em main(). */
 static void gera_mandelbrot_omp(int *matriz, const config_t *cfg,
                                 double re_min, double re_max,
                                 double im_min, double im_max,
@@ -126,6 +143,9 @@ static void gera_mandelbrot_omp(int *matriz, const config_t *cfg,
     {
         int tid = omp_get_thread_num();
 
+        /* Apenas a thread mestre (tid==0, garantido por "omp master") le o
+           numero real de threads ativas nesta regiao paralela -- pode ser
+           menor que o pedido em -t se o runtime nao conseguir alocar tudo. */
         #pragma omp master
         {
             *nthreads_usadas = omp_get_num_threads();
@@ -134,22 +154,36 @@ static void gera_mandelbrot_omp(int *matriz, const config_t *cfg,
         double t_ini = omp_get_wtime();
         long linhas_local = 0;
 
+        /* schedule(runtime): a politica (static/dynamic/guided) e o chunk
+           NAO sao fixados em codigo -- vem da variavel de ambiente
+           OMP_SCHEDULE em tempo de execucao, o que permite comparar as tres
+           politicas pedidas no relatorio sem recompilar.
+           nowait: dispensa a barreira implicita ao final do "omp for", pois
+           nao ha nenhum outro trabalho paralelo apos este loop dentro da
+           regiao -- cada thread pode seguir direto para medir seu tempo. */
         #pragma omp for schedule(runtime) nowait
         for (int py = 0; py < cfg->height; py++) {
             double cim = im_min + (double) py * (im_max - im_min) / (double) (cfg->height - 1);
             for (int px = 0; px < cfg->width; px++) {
                 double cre = re_min + (double) px * (re_max - re_min) / (double) (cfg->width - 1);
+                /* Cada thread escreve apenas em linhas distintas da matriz
+                   (nunca a mesma "py" e processada por duas threads), entao
+                   nao ha necessidade de secao critica ou atomic aqui. */
                 matriz[(size_t) py * cfg->width + px] = escape_time(cre, cim, cfg->max_iter);
             }
             linhas_local++;
         }
 
         double t_fim = omp_get_wtime();
+        /* tempos_thread/linhas_thread tem um slot por thread (indexado por
+           tid), entao cada thread escreve so na sua propria posicao --
+           tambem sem necessidade de sincronizacao. */
         tempos_thread[tid] = t_fim - t_ini;
         linhas_thread[tid] = linhas_local;
     }
 }
 
+/* Identica a versao serial: E/S nao e paralelizada neste arquivo. */
 static int escreve_binario(const int *matriz, const config_t *cfg) {
     char caminho[300];
     snprintf(caminho, sizeof(caminho), "%s.bin", cfg->prefixo);
@@ -168,6 +202,8 @@ static int escreve_binario(const int *matriz, const config_t *cfg) {
     return 0;
 }
 
+/* Tambem identica a versao serial (loop serial, sem pragma omp) -- nesta
+   branch a colorizacao da imagem final nao foi paralelizada. */
 static int escreve_pgm(const int *matriz, const config_t *cfg) {
     char caminho[300];
     snprintf(caminho, sizeof(caminho), "%s.pgm", cfg->prefixo);
@@ -211,6 +247,9 @@ int main(int argc, char **argv) {
     if (parse_argumentos(argc, argv, &cfg) != 0) {
         return EXIT_FAILURE;
     }
+    /* -t so sobrescreve o numero de threads se foi explicitamente pedido
+       (>0); caso contrario o OpenMP usa seu proprio default (normalmente
+       OMP_NUM_THREADS ou o numero de cores disponiveis). */
     if (cfg.threads > 0) {
         omp_set_num_threads(cfg.threads);
     }
@@ -223,6 +262,10 @@ int main(int argc, char **argv) {
     double im_min = cfg.centro_im - largura_im / 2.0;
     double im_max = cfg.centro_im + largura_im / 2.0;
 
+    /* omp_get_max_threads() da o teto de threads que a regiao paralela pode
+       usar -- usado para dimensionar os arrays por-thread (tempos/linhas)
+       ANTES de entrar na regiao paralela (onde omp_get_num_threads() so
+       teria o valor real). */
     int max_threads = omp_get_max_threads();
     double *tempos_thread = calloc((size_t) max_threads, sizeof(double));
     long *linhas_thread = calloc((size_t) max_threads, sizeof(long));
@@ -260,6 +303,10 @@ int main(int argc, char **argv) {
     double t3 = agora();
     double tempo_io = t3 - t2;
 
+    /* Fator de Balanceamento de Carga = tempo da thread mais lenta / tempo
+       medio entre as threads. Quanto mais proximo de 1.0, mais equilibrada
+       foi a distribuicao de trabalho -- essa e a metrica central pedida no
+       enunciado para comparar as politicas de escalonamento. */
     double soma = 0.0, maior = 0.0, menor = -1.0;
     for (int i = 0; i < nthreads_usadas; i++) {
         soma += tempos_thread[i];
@@ -278,6 +325,8 @@ int main(int argc, char **argv) {
     for (int i = 0; i < nthreads_usadas; i++) {
         printf("  thread %2d: %8.6f s, %ld linhas\n", i, tempos_thread[i], linhas_thread[i]);
     }
+    /* Linha em formato CSV pensada para ser facilmente extraida (ex.: grep
+       RESULTADO) e agregada em planilha/script ao rodar muitos experimentos. */
     printf("RESULTADO,%d,%d,%d,%d,%.6f,%.6f,%.4f\n",
            cfg.width, cfg.height, cfg.max_iter, nthreads_usadas,
            tempo_calculo, tempo_io, fator_balanceamento);
