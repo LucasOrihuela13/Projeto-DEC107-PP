@@ -1,0 +1,5 @@
+# Baseline serial (média de 7 execuções)
+# Linux cibsnotebook 7.2.6-arch2-1 #1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000 x86_64 GNU/Linux
+# gcc (GCC) 16.2.1 20260810
+strong=5.549727
+zoom=2.392873

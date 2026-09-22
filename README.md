@@ -22,13 +22,28 @@ saída serial).
 - [Formato de saída](#formato-de-saída)
 - [Métricas reportadas](#métricas-reportadas)
 - [Reproduzindo os experimentos oficiais](#reproduzindo-os-experimentos-oficiais)
+- [Automatização dos Experimentos de Desempenho](#automatização-dos-experimentos-de-desempenho)
 - [Validação de corretude](#validação-de-corretude)
 - [Otimizações da branch `otimizado`](#otimizações-da-branch-otimizado)
 - [Nota de transparência sobre uso de IA](#nota-de-transparência-sobre-uso-de-ia)
 
 ## Estrutura do repositório
 
-Cada branch contém os dois arquivos-fonte na raiz:
+A branch main contém os arquivos-fonte na raiz:
+
+```
+.
+├── mandelbrot_serial.c      # implementação sequencial (referência de corretude)
+├── mandelbrot_openmp.c      # implementação paralela com OpenMP
+├── run_experimentos.sh      # Bateria automatizada de testes
+├── mede_serial.sh           # Medidor do baseline serial (múltiplas repetições)
+├── roda_com_performance.sh  # Script de mitigação da frequência do CPU
+├── pos-processa.py          # Script Python para tabelas e gráficos
+├── Relatorio_Etapa1_Mandelbrot.pdf # Relatório Científico final
+└── README.md
+```
+
+Ao passo que a branch otimizado contém apenas os arquivos abaixo:
 
 ```
 .
@@ -37,11 +52,11 @@ Cada branch contém os dois arquivos-fonte na raiz:
 └── README.md
 ```
 
-Este repositório mantém duas branches com o mesmo par de arquivos, em estágios
+Este repositório mantém duas branches com o par de arquivos (mandelbrot_serial.c e mandelbrot_openmp.c), em estágios
 diferentes de otimização:
 
 - **`main`** — implementação de referência, direta, que atende aos requisitos
-  mínimos da Etapa 1.
+  mínimos da Etapa 1 e utilizada na produção do realatório final.
 - **`otimizado`** — mesma implementação acrescida de otimizações de
   desempenho (ver [seção dedicada](#otimizações-da-branch-otimizado)), usadas
   como base para o item de bônus "otimizações criativas" do enunciado.
@@ -70,6 +85,7 @@ diferentes de otimização:
   recente (OpenMP 2.0+ é suficiente; o `schedule(runtime)` usado é portátil).
 - `libm` (biblioteca matemática padrão do C), já presente em qualquer
   toolchain GCC — necessária apenas na branch `otimizado`.
+- Bibliotecas `pandas` e `matplotlib` do Python para compilação dos dados em CSV agregados e geração dos gráficos estatísticos.
 - Não há dependência de `-march=native` nem de flags específicas de CPU: os
   experimentos oficiais precisam rodar nos computadores pessoais de cada
   dupla (regra do enunciado), então o binário foi mantido portátil de
@@ -215,6 +231,15 @@ Na branch `otimizado`, adicione `-s 0` a qualquer um dos comandos acima para
 gerar a "linha de base sem bônus" (sem simetria) exigida ao comparar
 resultados com/sem as otimizações.
 
+## Automatização dos Experimentos de Desempenho
+
+Foram desenvolvidos scripts para automatizar a coleta maciça de dados, mitigar flutuações e extrair métricas de desempenho. Para gerar e agregar todo o bloco de strong scaling, weak scaling e zoom, execute sequencialmente:
+
+1. `./roda_com_performance.sh`: Script mestre (wrapper). Ele fixa o governador do CPU em modo `performance` (requer `sudo`) para evitar que oscilações dinâmicas de energia afetem as medições do benchmark. O script aciona automaticamente os testes medidores e, por fim, restaura o estado térmico original do processador de forma segura.
+2. `./mede_serial.sh`: Script secundário orquestrado pelo wrapper. Ele repete `N` testes na implementação sequencial e extrai um *baseline* confiável, gravado em `serial_baselines.txt`.
+3. `./run_experimentos.sh`: Executa a bateria de testes paralelos em massa e injeta os tempos capturados na formatação CSV original do programa para a planilha `resultados.csv`.
+4. `python3 pos-processa.py`: Lê os resultados brutos em CSV, agrega os logs, calcula matematicamente as métricas de *Speedup* e de Eficiência (utilizando as médias seriais coletadas no TXT), elabora a tabela de `resultados_agregados.csv` e produz os gráficos da Seção 3 do relatório científico.
+
 ## Validação de corretude
 
 Como o cálculo é determinístico, compare os arquivos `.bin` gerados pela
@@ -265,7 +290,7 @@ bit-idêntica à versão sem simetria, sem necessidade de tolerância.
 ## Nota de transparência sobre uso de IA
 
 Declaramos que este projeto contou com o auxílio das ferramentas de IA
-**Claude (Anthropic)** e **Gemini (Google)**, exclusivamente para as
+**Claude (Anthropic)**, **Gemini (Google)** e **DeepSeek(Hangzhou DeepSeek Artificial Intelligence Basic Technology Research Co., Ltd)** exclusivamente para as
 seguintes tarefas:
 
 - Sugestão de estratégias de otimização de desempenho para a versão OpenMP
@@ -273,6 +298,9 @@ seguintes tarefas:
 - Apoio na depuração (debugging) do código-fonte quando necessário (Claude).
 - Geração deste README e apoio na revisão/comentário do código-fonte
   (Gemini).
+- Revisão dos resultados apresentados na Seção 3 com relação aos experimentos feitos na máquina(Gemini e DeepSeek).
+- Apoio no entendimento dos resultados obtidos na Seção 3 (DeepSeek).
+- Apoio na produção de scripts para automatização dos experimentos (DeepSeek).
 
 Como autores, atestamos que revisamos, testamos e validamos criticamente
 todo o conteúdo gerado, assumindo total e exclusiva responsabilidade pela
