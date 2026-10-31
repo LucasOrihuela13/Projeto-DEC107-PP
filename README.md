@@ -85,3 +85,22 @@ executar fora de `performance`.
   todas as medições oficiais de speedup.
 - **`otimizado`**: versão da Etapa 1 com early-exit por cardioide/bulbo,
   detecção de ciclo e simetria do eixo real (detalhes no README da Etapa 1).
+
+## Nota de transparência sobre uso de IA
+
+Cada etapa traz, no seu relatório, a Declaração de Transparência e Uso de
+Inteligência Artificial exigida pela disciplina, detalhando em que frentes
+houve apoio de ferramentas de IA. O README de cada pasta reproduz esse
+detalhamento.
+
+Na Etapa 2 foi utilizada a ferramenta Claude, da Anthropic, nas seguintes
+frentes: depuração do código-fonte, geração do README do repositório e apoio na
+revisão e comentário do código, revisão dos resultados da Seção 3 em relação
+aos experimentos feitos na máquina, apoio no entendimento desses resultados,
+apoio na produção dos scripts de automatização dos experimentos, revisão
+metodológica da coleta, e apoio na estruturação e na redação do presente
+relatório, a partir dos dados experimentais coletados pela dupla.
+
+Toda a responsabilidade pela autoria, integridade e exatidão do conteúdo é da
+dupla, e todo o código, dados e textos foram revisados, testados e validados
+pelos autores.

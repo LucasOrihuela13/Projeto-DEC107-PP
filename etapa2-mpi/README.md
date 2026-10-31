@@ -235,10 +235,12 @@ da Anthropic, como recurso de apoio, nas seguintes frentes: depuração do
 código-fonte, geração do README do repositório e apoio na revisão e comentário
 do código, revisão dos resultados da Seção 3 em relação aos experimentos feitos
 na máquina, apoio no entendimento desses resultados, apoio na produção dos
-scripts de automatização dos experimentos, e revisão metodológica da coleta,
+scripts de automatização dos experimentos, revisão metodológica da coleta,
 que identificou a necessidade de medir um baseline sequencial próprio para cada
 resolução da escalabilidade fraca e a necessidade de fixar o governador de
-frequência em performance para manter a comparabilidade com a Etapa 1.
+frequência em performance para manter a comparabilidade com a Etapa 1, e apoio
+na estruturação e na redação do presente relatório, a partir dos dados
+experimentais coletados pela dupla.
 
 Toda a responsabilidade pela autoria, integridade e exatidão do conteúdo é da
 dupla, e todo o código, dados e textos foram revisados, testados e validados
