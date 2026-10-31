@@ -21,7 +21,6 @@ processos e como o resultado volta para o rank 0.
 - [Reproduzindo os experimentos oficiais](#reproduzindo-os-experimentos-oficiais)
 - [Formato dos arquivos de resultado](#formato-dos-arquivos-de-resultado)
 - [Validação de corretude](#validação-de-corretude)
-- [Geração do relatório](#geração-do-relatório)
 - [Resultados principais](#resultados-principais)
 - [Nota de transparência sobre uso de IA](#nota-de-transparência-sobre-uso-de-ia)
 
@@ -33,8 +32,6 @@ etapa2-mpi/
 ├── roda_com_performance_mpi.sh   # wrapper que fixa o governador em performance
 ├── run_experimentos_mpi.sh       # bateria completa: corretude, baselines e experimentos
 ├── pos_processa_mpi.py           # agrega resultados, calcula métricas e gera os gráficos
-├── gera_relatorio.py             # monta o relatório .docx a partir dos CSV
-├── conteudo_*.py                 # seções do relatório, importadas por gera_relatorio.py
 ├── resultados_mpi.csv            # dados brutos, uma linha por execução
 ├── resultados_agregados_mpi.csv  # médias, desvios e métricas derivadas
 ├── serial_baselines_mpi.txt      # T(n) sequencial do input padrão, do zoom e por resolução
@@ -207,22 +204,6 @@ Testado com 1, 2, 3, 5 e 7 processos, nas três estratégias, com chunks 1, 3,
 16 e 1000, usando uma altura que não divide pelo número de processos, tanto no
 input padrão quanto no zoom: todas as saídas idênticas à serial.
 
-## Geração do relatório
-
-```bash
-python3 gera_relatorio.py
-```
-
-Lê `resultados_agregados_mpi.csv`, `resultados_mpi.csv`,
-`serial_baselines_mpi.txt` e o CSV agregado da Etapa 1, e monta
-`Relatorio_Etapa2_Mandelbrot.docx` com as tabelas preenchidas e os gráficos
-embutidos. **Nenhum número é digitado no texto**, todos são lidos dos arquivos
-de resultado, o que elimina a possibilidade de divergência entre o relatório e
-os dados.
-
-O arquivo versionado nesta pasta é o `Relatorio_Etapa2_Mandelbrot.pdf`, que
-corresponde à versão final revisada e entregue. O gerador serve para
-reproduzir o documento base a partir dos dados.
 
 ## Resultados principais
 
