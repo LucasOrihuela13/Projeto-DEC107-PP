@@ -1,3 +1,5 @@
+# Saidas dos experimentos: matriz de contagens e imagens.
+# Sao regeneraveis rodando os binarios e chegam facil a varios GB.
 *.bin
 *.pgm
 *.ppm
@@ -6,5 +8,30 @@
 mandelbrot_serial
 mandelbrot_openmp
 mandelbrot_mpi
+*.o
+*.out
 
+# Python
 __pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+
+# Arquivos de bloqueio criados pelo Word e pelo LibreOffice ao abrir
+# o relatorio. Comecam com ~$ e nao devem ir para o historico.
+~$*
+
+# Despejos de core, que o MPI pode deixar quando um rank aborta
+core
+core.*
+vgcore.*
+
+# Editores e sistema operacional
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
