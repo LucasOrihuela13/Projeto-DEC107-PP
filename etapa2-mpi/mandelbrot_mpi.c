@@ -511,18 +511,19 @@ int main(int argc, char **argv) {
         }
         double tempo_io = MPI_Wtime() - t2;
 
-        /* No mestre-trabalhador o rank 0 nao calcula, entao fica fora do fator. */
+        /*
+          Fator de Balanceamento de Carga (FBC):
+          FBC = (T_max - T_min) / T_max
+          No mestre-trabalhador o rank 0 nao calcula, entao fica fora do fator.
+         */
         int primeiro = (cfg.estrategia == EST_MESTRE) ? 1 : 0;
-        int n_calc = nprocs - primeiro;
-        double soma = 0.0, maior = 0.0, menor = -1.0;
+        double maior = 0.0, menor = -1.0;
         for (int r = primeiro; r < nprocs; r++) {
             double tc = todas[3 * r];
-            soma += tc;
             if (tc > maior) maior = tc;
             if (menor < 0.0 || tc < menor) menor = tc;
         }
-        double media = soma / (double) n_calc;
-        double fator = (media > 0.0) ? (maior / media) : 0.0;
+        double fator = (maior > 0.0) ? ((maior - menor) / maior) : 0.0;
 
         /* O que sobra do tempo total depois do processo mais lento e custo de comunicacao/sincronizacao. */
         double overhead = tempo_calculo - maior;
@@ -536,7 +537,7 @@ int main(int argc, char **argv) {
         printf("Tempo total (s):          %.6f\n", tempo_calculo + tempo_io);
         printf("Tempo em MPI na raiz (s): %.6f\n", t_com_raiz);
         printf("Overhead de comunicacao:  %.6f s (tempo_calculo - maior computo)\n", overhead);
-        printf("Fator balanceamento:      %.4f (max/media)\n", fator);
+        printf("Fator balanceamento:      %.4f ((max-min)/max)\n", fator);
         printf("Computo max/min por rank: %.6f / %.6f\n", maior, menor);
         for (int r = 0; r < nprocs; r++) {
             printf("  rank %2d: computo %8.6f s, MPI %8.6f s, %ld linhas%s\n",
